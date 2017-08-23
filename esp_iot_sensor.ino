@@ -46,6 +46,11 @@
 #define NOSERIAL
 #endif
 
+#ifdef ARDUINO_ESP8266_WEMOS_D1MINI
+#define LED LED_BUILTIN
+#define SENSOR D0
+#endif
+
 /*
  * If serial is turned off, the PRINT() macros need to be a noop
  * Gottcha here is if you do something like: 
