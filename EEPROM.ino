@@ -14,14 +14,14 @@ void loadConfig() {
     password[0] = 0;
     endpoint[0] = 0;
     endpoint_auth[0] = 0;
-    PRINTLN("No params recovered");
+    debugln("No params recovered");
   } else {
-    PRINTLN("Recovered parameters:");
-    PRINTLN(ssid);
-    PRINTLN(strlen(password)>0?"********":"<no password>");
-    PRINTLN(endpoint);
-    PRINTLN(strlen(endpoint_auth)>0?"********":"<no auth>");
-    PRINTLN(endpoint_fingerprint);
+    debugln("Recovered parameters:");
+    debugln(ssid);
+    debugln(strlen(password)>0?"********":"<no password>");
+    debugln(endpoint);
+    debugln(strlen(endpoint_auth)>0?"********":"<no auth>");
+    debugln(endpoint_fingerprint);
   }
 }
 
@@ -38,5 +38,5 @@ void saveConfig() {
   EEPROM.commit();
   EEPROM.end();
 
-  PRINTLN("Saved parameters");
+  debugln("Saved parameters");
 }

@@ -42,13 +42,13 @@ void flagForSend() {
 void sendSensorData() {
   float pct = (float)onCount/((float)count);
   pct*=100;
-  PRINT(millis());
-  PRINT(": ");
-  PRINT(pct);
-  PRINT("% ");
-  PRINT(onCount);
-  PRINT("/");
-  PRINTLN(count);
+  debug(millis());
+  debug(": ");
+  debug(pct);
+  debug("% ");
+  debug(onCount);
+  debug("/");
+  debugln(count);
 
   sendValueToServer(pct);
 
