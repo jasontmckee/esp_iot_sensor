@@ -6,14 +6,10 @@
  * to get runtime configuration values (sample & report intervals)
  */
 void registerDevice() {
-  String ep = String(endpoint);
-  String host = ep.substring(ep.indexOf("://")+3,ep.indexOf("/",ep.indexOf("://")+3));
-  String resource = ep.substring(ep.indexOf("/",ep.indexOf("://")+3));
-
   // build POST body
   String body = "{\"mac_addr\": \"" + WiFi.macAddress() + "\",\"model\":\"" + ARDUINO_BOARD + "\",\"name\":\"" + netname + "\",\"ip\":\"" + WiFi.localIP().toString() + "\"}";
 
-  HttpResponse response = post(host,resource,body);
+  HttpResponse response = post(String(endpoint),body);
 
   if(response.status==200 || response.status==201) {
     // parse body as JSON
@@ -22,7 +18,7 @@ void registerDevice() {
     StaticJsonBuffer<300> JSONBuffer;
     JsonObject &object = JSONBuffer.parseObject(response.body.c_str());
     if (!object.success()) {
-      PRINTLN("JSON parsing failed");
+      debugln("JSON parsing failed");
       return;
     }
     
@@ -32,10 +28,10 @@ void registerDevice() {
     report_interval = result["report_interval"];
     sample_interval = result["sample_interval"];
     
-    PRINTLN(String("reporting interval set to ") + report_interval + " seconds");
-    PRINTLN(String("sampling interval set to ") + sample_interval + " ms");
+    debugln(String("reporting interval set to ") + report_interval + " seconds");
+    debugln(String("sampling interval set to ") + sample_interval + " ms");
   } else {
-    PRINTLN(String("ERROR: register returned ") + response.status);
+    debugln(String("ERROR: register returned ") + response.status);
   }
 }
 
@@ -43,38 +39,44 @@ void registerDevice() {
  * Send data to SN instance.  Currently hits Scripted REST API placeholder, needs to switch to Metric Base.
  */
 void sendValueToServer(float value) {
-  String ep = String(endpoint);
-  String host = ep.substring(ep.indexOf("://")+3,ep.indexOf("/",ep.indexOf("://")+3));
-  String resource = ep.substring(ep.indexOf("/",ep.indexOf("://")+3));
-
   String body = "{\"reading\":" + String(value) + "}";
 
-  post(host,resource + "/" + WiFi.macAddress() + "/reading", body);
+  post(String(endpoint) + "/" + WiFi.macAddress() + "/reading", body);
 }
 
 /*
  * Helper function to abstract out HTTP POSTing
 */
-HttpResponse post(String host, String resource, String body) {
+HttpResponse post(String url, String body) {
   HttpResponse response = HttpResponse();
+
+  // NOTE that we're not currently handling non-https connections
+
+  String host = getHost(url);
+  int port = getPort(url);
+  String resource = getResource(url);
   
   WiFiClientSecure client;
-  PRINT("connecting to ");
-  PRINTLN(host);
-  if (!client.connect(host.c_str(), 443)) {
-    PRINTLN("connection failed");
+  debug("connecting to ");
+  debug(host);
+  debug(":");
+  debug(port);
+  debugln(resource);
+  
+  if (!client.connect(host.c_str(), port)) {
+    debugln("connection failed");
     response.status = -1;
     return response;
   }
 
   if (client.verify(endpoint_fingerprint, host.c_str())) {
-    PRINTLN("certificate matches");
+    debugln("certificate matches");
   } else {
-    PRINTLN("ERROR: certificate doesn't match");
+    debugln("ERROR: certificate doesn't match");
   }
 
-  PRINT("requesting resource: ");
-  PRINTLN(resource);
+  debug("requesting resource: ");
+  debugln(resource);
 
   client.print(String("POST ") + resource + " HTTP/1.0\r\n" +
                "Host: " + host + "\r\n" +
@@ -83,33 +85,66 @@ HttpResponse post(String host, String resource, String body) {
                "Content-Length: " + body.length() + "\r\n" +
                "Connection: close\r\n\r\n" + body);
 
-  PRINTLN("request sent");
+  debugln("request sent");
   if(client.connected()) {
     String line = client.readStringUntil('\n');
     String status = line.substring(line.indexOf(" ")+1,line.lastIndexOf(" "));
     // set status in response
     response.status = status.toInt();
-    PRINT("status: ");
-    PRINTLN(status);    
+    debug("status: ");
+    debugln(status);
   }
   while (client.connected()) {
     String line = client.readStringUntil('\n');
-    //PRINT("header: "); PRINTLN(line);
+    //debug("header: "); debugln(line);
     if (line == "\r") {
-      PRINTLN("headers received");
+      debugln("headers received");
       break;
     }
   }
   // read body
-  //PRINTLN(client.available());
+  //debugln(client.available());
   response.body = "";
   while (client.connected()) {
     String line = client.readStringUntil('\n');
-    PRINTLN(line);
+    debugln(line);
     response.body += line;
   }
 
-  PRINTLN("closing connection");  
+  debugln("closing connection");  
 
   return response;
 }
+
+/*
+ * Helper functions to break apart URLs
+*/
+String getProtocol(String url) {
+  return url.substring(0,url.indexOf(":"));
+}
+String getHost(String url) {
+  String host = url.substring(url.indexOf("://")+3,url.indexOf("/",url.indexOf("://")+3));
+  // if port is specified, it will be in the host string above
+  if(host.indexOf(":")>-1) {
+    host = host.substring(0,host.indexOf(":"));
+  }
+  return host;  
+}
+
+int getPort(String url) {
+  int port = 80;
+  if(getProtocol(url) == "https") {
+    port = 443;  
+  }
+  String host = url.substring(url.indexOf("://")+3,url.indexOf("/",url.indexOf("://")+3));
+  if(host.indexOf(":")>-1) {
+    String portNum = host.substring(host.indexOf(":")+1);
+    port = portNum.toInt();
+  }
+  return port;  
+}
+
+String getResource(String url) {
+  return url.substring(url.indexOf("/",url.indexOf("://")+3));
+}
+
