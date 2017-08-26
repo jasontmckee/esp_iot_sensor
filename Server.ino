@@ -2,8 +2,10 @@ void startServer() {
   server.on("/", handleRoot);
   server.on("/config", handleConfig);
   server.on("/reset", handleReset);
+  server.on("/restart", handleRestart);
+  server.on("/identify", handleIdentify);
   server.begin();
-  PRINTLN("HTTP server started");
+  debugln("HTTP server started");
 }
 
 /*   
@@ -27,6 +29,12 @@ void handleRoot() {
   response += "<input type=\"submit\" value=\"Configure\"/>";
   response += "</form>";
 
+  response += "<p>";
+  response += "<a href=\"/identify\">Identify</a><hr/>";
+  response += "<a href=\"/restart\">Restart</a><br/>";
+  response += "<a href=\"/reset\">Reset</a><br/>";
+  response += "</p>";
+
   response += "</body></html>";
 
   server.send(200, "text/html", response);
@@ -35,10 +43,42 @@ void handleRoot() {
 void handleReset() {
   String result = "{\"status\":\"OK\"}";
   server.send(200,"application/json",result);
-  PRINTLN("Resetting...");
+  debugln("Resetting...");
+  delay(1000);
+  ESP.reset();
+}
+
+void handleRestart() {
+  String result = "{\"status\":\"OK\"}";
+  server.send(200,"application/json",result);
+  debugln("Restarting...");
   delay(1000);
   ESP.restart();
 }
+
+void handleIdentify() {
+  // suspend sensor handling by flagging sensor as un-initialized
+  // save previous state
+  int sensor_state = sensor_initialized;
+  sensor_initialized = 0;
+  
+  String result = "{\"status\":\"OK\"}";
+  server.send(200,"application/json",result);
+
+  debug("Identifying");
+  for(int i=0; i< 15; i++) {
+    digitalWrite(LED,ON);
+    delay(500);
+    debug(".");
+    digitalWrite(LED,OFF);
+    delay(500);
+  }
+  debugln("Done!");
+
+  // restore previous state
+  sensor_initialized = sensor_state;
+}
+
 
 void handleConfig() {
   String result = "{\"status\":\"OK\"";
@@ -46,28 +86,28 @@ void handleConfig() {
   for (int i = 0; i < server.args(); i++) {
     result += ",\"" + server.argName(i) + "\":\"" + server.arg(i) + "\"";
     if(server.argName(i)=="ssid") {
-      PRINT("Found ssid: ");
-      PRINTLN(server.arg(i));
+      debug("Found ssid: ");
+      debugln(server.arg(i));
       server.arg(i).toCharArray(ssid,server.arg(i).length()+1);
     }
     if(server.argName(i)=="password") {
-      PRINT("Found password: ");
-      PRINTLN(server.arg(i));
+      debug("Found password: ");
+      debugln(server.arg(i));
       server.arg(i).toCharArray(password,server.arg(i).length()+1);
     }
     if(server.argName(i)=="endpoint") {
-      PRINT("Found endpoint: ");
-      PRINTLN(server.arg(i));
+      debug("Found endpoint: ");
+      debugln(server.arg(i));
       server.arg(i).toCharArray(endpoint,server.arg(i).length()+1);
     }
     if(server.argName(i)=="endpoint_auth") {
-      PRINT("Found endpoint_auth: ");
-      PRINTLN(server.arg(i));
+      debug("Found endpoint_auth: ");
+      debugln(server.arg(i));
       server.arg(i).toCharArray(endpoint_auth,server.arg(i).length()+1);
     }
     if(server.argName(i)=="endpoint_fingerprint") {
-      PRINT("Found endpoint_fingerprint: ");
-      PRINTLN(server.arg(i));
+      debug("Found endpoint_fingerprint: ");
+      debugln(server.arg(i));
       server.arg(i).toCharArray(endpoint_fingerprint,server.arg(i).length()+1);
     }
   } 
