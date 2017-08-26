@@ -1,11 +1,15 @@
 void doAP() {
-  PRINT("Configuring access point...");
+  debug("Configuring access point...");
+
+  // turn on AP mode
+  WiFi.mode(WIFI_AP);
 
   WiFi.softAP(netname);
 
   IPAddress myIP = WiFi.softAPIP();
-  PRINT("AP IP address: ");
-  PRINTLN(myIP);
+  delay(1000);
+  debug("AP IP address: ");
+  debugln(myIP);
 
   // fire up web server
   startServer();

@@ -52,17 +52,17 @@
 #endif
 
 /*
- * If serial is turned off, the PRINT() macros need to be a noop
+ * If serial is turned off, the debug() macros need to be a noop
  * Gottcha here is if you do something like: 
- * PRINT("foo"); i++;
+ * debug("foo"); i++;
  * in which case i++ will not be compiled/executed
 */
 #ifdef NOSERIAL
-#define PRINT(x) //(x)
-#define PRINTLN(x) //(x)
+#define debug(x) //(x)
+#define debugln(x) //(x)
 #else
-#define PRINT(x) Serial.print(x)
-#define PRINTLN(x) Serial.println(x)
+#define debug(x) Serial.print(x)
+#define debugln(x) Serial.println(x)
 #endif
 
 /*
@@ -94,6 +94,7 @@ char endpoint[128];
 char endpoint_auth[64];
 char endpoint_fingerprint[64];
 
+// configuration from server
 int report_interval = 0; // seconds
 int sample_interval = 100; // ms
 
@@ -109,6 +110,11 @@ void setup() {
 	Serial.begin(115200);
 #endif
 
+  // turn off AP (if it's still on)
+  WiFi.softAPdisconnect(true);
+  // switch to pure station
+  WiFi.mode(WIFI_STA);
+
   // recover config from EEPROM
   loadConfig();
 
@@ -121,17 +127,18 @@ void setup() {
   s.replace(":","");
   netname = (char*)malloc(s.length()+1);
   s.toCharArray(netname,s.length()+1);
-  PRINT("netname: ");
-  PRINTLN(netname);
+  debug("netname: ");
+  debugln(netname);
 
   // connect to configured AP
   WiFi.begin(ssid, password);
-
+  int ledState = ON;
   int retry = 0;
-  PRINTLN("Connecting Wifi");
-  digitalWrite(LED,ON);
+  debugln("Connecting Wifi");
   while(WiFi.status() != WL_CONNECTED && retry < 30) {
-    PRINT(".");
+    digitalWrite(LED,ledState);
+    debug(".");
+    ledState = (ledState==ON) ? OFF : ON;
     retry++;
     delay(1000);
   }
@@ -139,13 +146,21 @@ void setup() {
   
   if(WiFi.status() != WL_CONNECTED) {
     // if we can't connect to configured ssid, launch the AP for configuration
+    digitalWrite(LED,ON);
     doAP();
   } else {
     // connected to ssid, boot normally
-    PRINTLN("");
-    PRINTLN("WiFi connected");
-    PRINTLN("IP address: ");
-    PRINTLN(WiFi.localIP());
+    debugln("");
+    debugln("WiFi connected");
+    debugln("IP address: ");
+    debugln(WiFi.localIP());
+
+    // blink LED rapidly for 3 sec to confirm connection
+    for(int i=0; i<30; i++) {
+      ledState = (ledState==ON) ? OFF : ON;
+      digitalWrite(LED,ledState);
+      delay(100);
+    }
 
     // launch web server for additional configuration
     startServer();
@@ -159,9 +174,9 @@ void setup() {
 
   // advertise Bonjour/Zeroconf name
   if(MDNS.begin(netname)) {
-    PRINT("MDNS responder started: ");
-    PRINT(netname);
-    PRINTLN(".local");
+    debug("MDNS responder started: ");
+    debug(netname);
+    debugln(".local");
   }
 }
 
