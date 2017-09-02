@@ -13,13 +13,15 @@ void startServer() {
  */
 void handleRoot() {
   String response = "<!doctype html><html><head>";
-  response += "<title>SN IoT Properties</title>";
+  response += "<title>IoT Properties</title>";
   response += "</head><body>";
 
   //
   // password & endpoint_auth not displayed to the user
   //
-  response += "<h1>SN IoT Properties</h1><form method=\"POST\" action=\"/config\"><table>";
+  response += "<h1>IoT Properties</h1><form method=\"POST\" action=\"/config\">";
+  response += "<p>Version: " + String(VERSION) + "</p>";
+  response += "<table>";
   response += "<tr><th>ssid</th><td><input type=\"text\" name=\"ssid\" value=\"" + String(ssid) + "\"/></td></tr>";
   response += "<tr><th>password</th><td><input type=\"text\" name=\"password\" value=\"\"/></td></tr>";
   response += "<tr><th>endpoint</th><td><input type=\"text\" name=\"endpoint\" value=\"" + String(endpoint) + "\" size=\"128\"/></td></tr>";

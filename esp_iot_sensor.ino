@@ -33,6 +33,8 @@
 #include <EEPROM.h>
 #include <ESP8266mDNS.h>
 #include <Ticker.h>
+#include "HttpClient.h"
+#include "Version.h"
 
 #ifdef ARDUINO_ESP8266_NODEMCU
 #define LED LED_BUILTIN
@@ -79,12 +81,6 @@
 #define OFF LOW
 #endif
 
-// struct definition needs to be here to make Client.ino compile right
-struct HttpResponse {
-  int status;
-  String body;
-};
-
 const char* netnamePrefix = "iot-";
 
 // config variables (stored in EEPROM)
@@ -109,6 +105,10 @@ void setup() {
 #ifndef NOSERIAL  
 	Serial.begin(115200);
 #endif
+
+  debugln("");
+  debug("Version: ");
+  debugln(VERSION);
 
   // turn off AP (if it's still on)
   WiFi.softAPdisconnect(true);
@@ -170,14 +170,22 @@ void setup() {
 
     // if we're in normal mode, init sensors
     sensorInit();
-  }
 
-  // advertise Bonjour/Zeroconf name
-  if(MDNS.begin(netname)) {
-    debug("MDNS responder started: ");
-    debug(netname);
-    debugln(".local");
+    // advertise mDNS name
+    delay(2000);
+    if(MDNS.begin(netname,WiFi.localIP(),120)) {
+      debug("mDNS responder started: ");
+      debug(netname);
+      debugln(".local");
+
+      MDNS.addService("http", "tcp", 80);
+
+      MDNS.update();
+    } else {
+      debugln("Error starting mDNS");  
+    }
   }
+  
 }
 
 void loop() {
