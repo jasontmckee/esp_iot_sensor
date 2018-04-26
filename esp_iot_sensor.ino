@@ -33,8 +33,10 @@
 #include <EEPROM.h>
 #include <ESP8266mDNS.h>
 #include <Ticker.h>
+#include <WiFiManager.h>
 #include "HttpClient.h"
 #include "Version.h"
+#include "WiFiDefaults.h"
 
 #ifdef ARDUINO_ESP8266_NODEMCU
 #define LED LED_BUILTIN
@@ -48,9 +50,18 @@
 #define NOSERIAL
 #endif
 
+// at some point ESP01 became GENERIC
+#ifdef ARDUINO_ESP8266_GENERIC
+//#define LED LED_BUILTIN
+#define LED 1
+#define SENSOR 2
+// reusing TX serial pin with LED_BUILTIN, so no serial output
+#define NOSERIAL
+#endif
+
 #ifdef ARDUINO_ESP8266_WEMOS_D1MINI
 #define LED LED_BUILTIN
-#define SENSOR D0
+#define SENSOR D1
 #endif
 
 /*
@@ -84,11 +95,12 @@
 const char* netnamePrefix = "iot-";
 
 // config variables (stored in EEPROM)
-char ssid[32];
-char password[32];
-char endpoint[128];
-char endpoint_auth[64];
-char endpoint_fingerprint[64];
+char endpoint[128] = "";
+char endpoint_auth[64] = "";
+char endpoint_fingerprint[64] = "";
+
+// calling actual saveConfig from wifimanager makes things unstable
+bool shouldSaveConfig = false;
 
 // configuration from server
 int report_interval = 0; // seconds
@@ -100,6 +112,11 @@ char *netname;
 
 ESP8266WebServer server(80);
 
+WiFiManager wifiManager;
+  
+Ticker ledTimer;
+int ledState = ON;
+
 void setup() {
 	delay(1000);
 #ifndef NOSERIAL  
@@ -110,13 +127,13 @@ void setup() {
   debug("Version: ");
   debugln(VERSION);
 
-  // turn off AP (if it's still on)
-  WiFi.softAPdisconnect(true);
-  // switch to pure station
-  WiFi.mode(WIFI_STA);
-
   // recover config from EEPROM
   loadConfig();
+
+  // WiFiManager versions of config variables
+  WiFiManagerParameter custom_endpoint("endpoint", "endpoint", endpoint, 128);
+  WiFiManagerParameter custom_endpoint_auth("endpoint_auth", "endpoint authorization", endpoint_auth, 64);
+  WiFiManagerParameter custom_endpoint_fingerprint("endpoint_fingerprint", "endpoint SHA fingerprint", endpoint_fingerprint, 64);
 
   // set pin modes
   pinMode(LED,OUTPUT);
@@ -130,60 +147,78 @@ void setup() {
   debug("netname: ");
   debugln(netname);
 
-  // connect to configured AP
-  WiFi.begin(ssid, password);
-  int ledState = ON;
-  int retry = 0;
-  debugln("Connecting Wifi");
-  while(WiFi.status() != WL_CONNECTED && retry < 30) {
-    digitalWrite(LED,ledState);
-    debug(".");
-    ledState = (ledState==ON) ? OFF : ON;
-    retry++;
-    delay(1000);
-  }
-  digitalWrite(LED,OFF);
-  
-  if(WiFi.status() != WL_CONNECTED) {
-    // if we can't connect to configured ssid, launch the AP for configuration
-    digitalWrite(LED,ON);
-    doAP();
+  // save previous ssid/pass used by wifimanager
+  String lastSSID = WiFi.SSID();
+  String lastPassword = WiFi.psk();
+
+  if(connectToAP(DEFAULT_SSID,DEFAULT_PASSWORD)) {
+    debugln("connected to default ssid");
+  } else if(connectToAP(lastSSID,lastPassword)) {
+    debugln("connected to last ssid");
   } else {
-    // connected to ssid, boot normally
-    debugln("");
-    debugln("WiFi connected");
-    debugln("IP address: ");
-    debugln(WiFi.localIP());
-
-    // blink LED rapidly for 3 sec to confirm connection
-    for(int i=0; i<30; i++) {
-      ledState = (ledState==ON) ? OFF : ON;
-      digitalWrite(LED,ledState);
-      delay(100);
-    }
-
-    // launch web server for additional configuration
-    startServer();
+    debugln("launching WiFiManager");
+    wifiManager.addParameter(&custom_endpoint);
+    wifiManager.addParameter(&custom_endpoint_auth);
+    wifiManager.addParameter(&custom_endpoint_fingerprint);
+    wifiManager.setAPCallback(configModeCallback);
+    wifiManager.setSaveConfigCallback(saveConfigCallback);
   
-    // other boot-up stuff goes here (thinger.io...etc.)
-    registerDevice();
-
-    // if we're in normal mode, init sensors
-    sensorInit();
-
-    // advertise mDNS name
-    delay(2000);
-    if(MDNS.begin(netname,WiFi.localIP(),120)) {
-      debug("mDNS responder started: ");
-      debug(netname);
-      debugln(".local");
-
-      MDNS.addService("http", "tcp", 80);
-
-      MDNS.update();
-    } else {
-      debugln("Error starting mDNS");  
+    ledTimer.attach(1,toggleLed);
+    if(!wifiManager.autoConnect(netname)) {
+      debugln("failed to connect and hit timeout");
+      delay(3000);
+      //reset and try again, or maybe put it to deep sleep
+      ESP.reset();
+      delay(5000);
     }
+  }
+  
+  // success! continue startup
+  ledTimer.detach();
+  ledTimer.attach(0.1,toggleLed);
+  delay(3000);
+  ledTimer.detach();
+  digitalWrite(LED,OFF);
+
+  if(shouldSaveConfig) {
+    debugln("");
+    debugln("persisting WiFiManager config params:");
+    if(strcmp(custom_endpoint.getValue(),"")!=0) {
+      strcpy(endpoint,custom_endpoint.getValue());
+      debugln(String("endpoint: ") + endpoint);
+    }
+    if(strcmp(custom_endpoint_auth.getValue(),"")!=0) {
+      strcpy(endpoint_auth,custom_endpoint_auth.getValue());
+      debugln(String("endpoint_auth: ") + endpoint_auth);
+    }
+    if(strcmp(custom_endpoint_fingerprint.getValue(),"")!=0) {
+      strcpy(endpoint_fingerprint,custom_endpoint_fingerprint.getValue());
+      debugln(String("endpoint_fingerprint: ") + endpoint_fingerprint);
+    }
+    saveConfig();
+  }
+  
+  // launch web server for additional configuration
+  startServer();
+
+  // other boot-up stuff goes here (thinger.io...etc.)
+  registerDevice();
+
+  // if we're in normal mode, init sensors
+  sensorInit();
+
+  // advertise mDNS name
+  delay(2000);
+  if(MDNS.begin(netname,WiFi.localIP(),120)) {
+    debug("mDNS responder started: ");
+    debug(netname);
+    debugln(".local");
+
+    MDNS.addService("http", "tcp", 80);
+
+    MDNS.update();
+  } else {
+    debugln("Error starting mDNS");  
   }
   
 }
@@ -196,4 +231,8 @@ void loop() {
   }
 }
 
-
+void toggleLed() {
+    digitalWrite(LED,ledState);
+    //debug(".");
+    ledState = (ledState==ON) ? OFF : ON;  
+}

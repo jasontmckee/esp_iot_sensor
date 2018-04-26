@@ -1,7 +1,7 @@
 #ifndef wifidefaults_h
 #define wifidefaults_h
 
-#define DEFAULT_SSID "IOT 2.4"
-#define DEFAULT_PASSWORD "thingsof1nternet"
+#define DEFAULT_SSID "defaultssid"
+#define DEFAULT_PASSWORD "defaultpassword"
 
 #endif
